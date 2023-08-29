@@ -52,16 +52,19 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     return heatmap
 
 def run_inference(net, image_pil): 
-    objects = ['cup', 'drawer', 'potlid', 'microwave']
-    bboxes = []
+    objects = [] # objs # ['cup', 'drawer', 'potlid', 'microwave']
+    bboxes = {} # []
     for obj in objects: 
         with torch.no_grad(): 
             masks, boxes, phrases, logits = model.predict(image_pil, obj)
-        bboxes.append(boxes)
+        bboxes[obj] = boxes # bboxes.append(boxes)
 
-    contact_points = []
-    trajectories = []
-    for boxes in bboxes: 
+    contact_points = {} # []
+    trajectories = {} # []
+    crops = {}
+    for obj in bboxes.keys(): # for boxes in bboxes: 
+        boxes = bboxes[obj]
+        if len(boxes) == 0: continue # no prediction
         box = boxes[0]
         y1, x1, y2, x2 = box
         bbox_offset = 20
@@ -80,6 +83,8 @@ def run_inference(net, image_pil):
             x2 -= int((diff / (np.random.uniform(1.5, 2.5) + diff % 2)))
 
         img = np.asarray(image_pil)
+        y1, x1, y2, x2 = max(0, y1), max(0, x1), min(img.shape[1], y2), min(img.shape[0], x2)
+        crops[obj] = [x1, x2, y1, y2]
         input_img = img[x1:x2, y1:y2]
         inp_img = Image.fromarray(input_img)
         inp_img = transform(inp_img).unsqueeze(0)
@@ -102,22 +107,25 @@ def run_inference(net, image_pil):
         dx, dy = np.array([x2, y2])*np.array([h, w]) + np.random.randn(2)*traj_scale
         scale = 40/max(abs(dx), abs(dy))
         adjusted_cp = np.array([y1, x1]) + cp
-        contact_points.append(adjusted_cp)
-        trajectories.append([x2, y2, dx, dy])
+        contact_points[obj] = adjusted_cp # contact_points.append(adjusted_cp)
+        trajectories[obj] = [x2, y2, dx, dy] # trajectories.append([x2, y2, dx, dy])
     
 
     original_img = np.asarray(image_pil)
-    hmap = compute_heatmap(np.vstack(contact_points), (original_img.shape[1],original_img.shape[0]), k_ratio = 6)
+    hmap = compute_heatmap(np.vstack([contact_points[k] for k in contact_points.keys()]), (original_img.shape[1],original_img.shape[0]), k_ratio = 6)
     hmap = (hmap * 255).astype(np.uint8)
     hmap = cv2.applyColorMap(hmap, colormap=cv2.COLORMAP_JET)
     overlay = (0.6*original_img +  0.4 *hmap).astype(np.uint8)
     plt.imshow(overlay)
-    for i, cp in enumerate(contact_points):
-        x2, y2, dx, dy = trajectories[i]
+    for obj in contact_points.keys(): # for i, cp in enumerate(contact_points):
+        x2, y2, dx, dy = trajectories[obj] # x2, y2, dx, dy = trajectories[i]
         scale = 60/max(abs(dx), abs(dy))
+        cp = contact_points[obj]
         x, y = cp[:, 0] , cp[:, 1]
         plt.arrow(int(np.mean(x)), int(np.mean(y)), scale*dx, -scale*dy, color='white', linewidth=2.5, head_width=12)
-
+        plt.text(int(np.mean(x))-20, int(np.mean(y))-20, obj, color='White')
+        x1, x2, y1, y2 = crops[obj]
+        plt.plot([y1, y2, y2, y1, y1], [x1, x1, x2, x2, x1], color='white', linewidth=2.5)
 
     plt.axis('off')
     img_buf = io.BytesIO()
