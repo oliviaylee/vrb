@@ -52,16 +52,16 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     return heatmap
 
 def run_inference(net, image_pil): 
-    objects = [] # objs # ['cup', 'drawer', 'potlid', 'microwave']
+    objects = ['refrigerator', 'microwave', 'cupboard', 'pan', 'faucet', 'knife', 'drawer'] # objs # ['cup', 'drawer', 'potlid', 'microwave']
     bboxes = {} # []
     for obj in objects: 
         with torch.no_grad(): 
             masks, boxes, phrases, logits = model.predict(image_pil, obj)
         bboxes[obj] = boxes # bboxes.append(boxes)
+    if len(bboxes.keys()) == 0: return image_pil # no objects detected
 
     contact_points = {} # []
     trajectories = {} # []
-    crops = {}
     for obj in bboxes.keys(): # for boxes in bboxes: 
         boxes = bboxes[obj]
         if len(boxes) == 0: continue # no prediction
@@ -84,7 +84,6 @@ def run_inference(net, image_pil):
 
         img = np.asarray(image_pil)
         y1, x1, y2, x2 = max(0, y1), max(0, x1), min(img.shape[1], y2), min(img.shape[0], x2)
-        crops[obj] = [x1, x2, y1, y2]
         input_img = img[x1:x2, y1:y2]
         inp_img = Image.fromarray(input_img)
         inp_img = transform(inp_img).unsqueeze(0)
@@ -110,6 +109,7 @@ def run_inference(net, image_pil):
         contact_points[obj] = adjusted_cp # contact_points.append(adjusted_cp)
         trajectories[obj] = [x2, y2, dx, dy] # trajectories.append([x2, y2, dx, dy])
     
+    if len(contact_points.keys()) == 0: return image_pil
 
     original_img = np.asarray(image_pil)
     hmap = compute_heatmap(np.vstack([contact_points[k] for k in contact_points.keys()]), (original_img.shape[1],original_img.shape[0]), k_ratio = 6)
@@ -124,12 +124,12 @@ def run_inference(net, image_pil):
         x, y = cp[:, 0] , cp[:, 1]
         plt.arrow(int(np.mean(x)), int(np.mean(y)), scale*dx, -scale*dy, color='white', linewidth=2.5, head_width=12)
         plt.text(int(np.mean(x))-20, int(np.mean(y))-20, obj, color='White')
-        x1, x2, y1, y2 = crops[obj]
-        plt.plot([y1, y2, y2, y1, y1], [x1, x1, x2, x2, x1], color='white', linewidth=2.5)
+
 
     plt.axis('off')
     img_buf = io.BytesIO()
     plt.tight_layout()
     plt.savefig(img_buf, format='png', bbox_inches='tight')
+    plt.clf()
     im = Image.open(img_buf)
     return im

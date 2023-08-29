@@ -54,28 +54,29 @@ def main(args):
     dt = torch.load(args.model_path, map_location='cpu')
     net.load_state_dict(dt)
     net = net.cpu()
-    # for vid_path in valid_videos:
-    #     video = vid_path[vid_path.rfind('/')+1:]
-    #     if video == 'P02_132': continue
-    #     images = glob.glob(vid_path + '/*.jpg')
-    #     for img in images:
-    #         torch.cuda.empty_cache()
-    #         image_pil = Image.open(img).convert("RGB")
-    #         image_pil = image_pil.resize((1008, 756))
-    #         objs = []
-    #         with open(os.path.join(args.visor_objs, video, 'obj_list.txt'), 'r') as fp:
-    #             for line in fp:
-    #                 line = line[:-1] # remove /n
-    #                 if line.find('/') == -1:
-    #                     objs.append(line)
-    #                 else: 
-    #                     line_split = line.split('/')
-    #                     objs.extend(line_split)
-            im_out = run_inference(net, image_pil) # run_inference(net, image_pil, objs)
+    for vid_path in valid_videos:
+        video = vid_path[vid_path.rfind('/')+1:]
+        images = glob.glob(os.path.join(vid_path, '*.jpg'))
+        i = 0
+        while i < len(images):
+            img = images[i]
+            image_pil = Image.open(img).convert("RGB")
+            image_pil = image_pil.resize((1008, 756))
+            # objs = []
+            # with open(os.path.join(args.visor_objs, video, 'obj_list.txt'), 'r') as fp:
+            #     for line in fp:
+            #         line = line[:-1] # remove /n
+            #         if line.find('/') == -1:
+            #             objs.append(line)
+            #         else: 
+            #             line_split = line.split('/')
+            #             objs.extend(line_split)
+            im_out = run_inference(net, image_pil)
             if not os.path.exists(os.path.join(args.save_dir, video)):
                 os.makedirs(os.path.join(args.save_dir, video))
             im_out.save(os.path.join(args.save_dir, video, img[img.rfind('/')+1:-4] + '_out.png'))
             print(img)
+            i += 10
         print(video)
 
 if __name__ == "__main__":
