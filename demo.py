@@ -10,20 +10,9 @@ from inference import run_inference
 from PIL import Image
 
 def main(args):
-    epick_100 = glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-100/folder*/*')
-    epick_2018 = glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-2018/frames_rgb_flow/rgb/folder*/*')
-    all_epick = epick_100 + epick_2018
-    valid_videos = []
-    for fp in all_epick:
-        video = fp[fp.rfind('/')+1:]
-        if os.path.isdir(os.path.join('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data/', video)):
-            valid_videos.append(fp)
-    if len(valid_videos) != len(glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data/P*')):
-        valid_videos_vidnames = [v[v.rfind('/')+1:] for v in valid_videos]
-        frame_data_vidnames = [v[v.rfind('/')+1:] for v in frame_data]
-        print(set(valid_videos_vidnames) - set(frame_data_vidnames))
-    else:
-        print('all videos accounted for')
+    epick_100 = glob.glob(os.path.join(args.epick_100_dir, 'folder*/*'))
+    epick_2018 = glob.glob(os.path.join(args.epick_2018_dir, 'folder*/*'))
+    video_list = epick_100 + epick_2018
 
     torch.cuda.manual_seed_all(args.manual_seed)
     torch.manual_seed(args.manual_seed)
@@ -54,29 +43,21 @@ def main(args):
     dt = torch.load(args.model_path, map_location='cpu')
     net.load_state_dict(dt)
     net = net.cpu()
-    for vid_path in valid_videos:
+    for vid_path in video_list:
         video = vid_path[vid_path.rfind('/')+1:]
-        images = glob.glob(os.path.join(vid_path, '*.jpg'))
+        imgs_full = glob.glob(os.path.join(vid_path, '*.jpg'))
         i = 0
-        while i < len(images):
-            img = images[i]
-            image_pil = Image.open(img).convert("RGB")
-            image_pil = image_pil.resize((1008, 756))
-            # objs = []
-            # with open(os.path.join(args.visor_objs, video, 'obj_list.txt'), 'r') as fp:
-            #     for line in fp:
-            #         line = line[:-1] # remove /n
-            #         if line.find('/') == -1:
-            #             objs.append(line)
-            #         else: 
-            #             line_split = line.split('/')
-            #             objs.extend(line_split)
-            im_out = run_inference(net, image_pil)
+        while i < len(imgs):
+            imgs_batch = imgs_full[i:min(i+args.batch_size, len(imgs))]
+            image_pils = [Image.open(img).convert("RGB").resize((1008, 756)) for img in imgs_batch]
             if not os.path.exists(os.path.join(args.save_dir, video)):
                 os.makedirs(os.path.join(args.save_dir, video))
-            im_out.save(os.path.join(args.save_dir, video, img[img.rfind('/')+1:-4] + '_out.png'))
-            print(img)
-            i += 10
+            im_outs = run_inference(net, image_pils)
+            for im_idx in len(im_outs):
+                im_out, im_name = im_outs[im_idx], imgs_batch[im_idx]
+                im_out.save(os.path.join(args.save_dir, video, im_name[im_name.rfind('/')+1:-4] + '_out.png'))
+                print(im_name)
+            i += args.batch_size
         print(video)
 
 if __name__ == "__main__":
@@ -93,13 +74,43 @@ if __name__ == "__main__":
     parser.add_argument('--traj_len', type=int, default=5)
     parser.add_argument("--encoder_time_embed_type", default="sin",  choices=["sin", "param"], help="transformer encoder time position embedding")
     parser.add_argument("--manual_seed", default=0, type=int, help="manual seed")
-    # parser.add_argument('--image', type=str, default='./kitchen.jpeg')
-    # parser.add_argument('--video', type=str, default='example')
+    parser.add_argument('--epick_100_dir', type=str, default='/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-100/')
+    parser.add_argument('--epick_2018_dir', type=str, default='/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-2018/frames_rgb_flow/rgb/')
+    parser.add_argument('--epick_2018_dir', type=str, default='/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-2018/frames_rgb_flow/rgb/') 
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--model_path', type=str, default='./models/model_checkpoint_1249.pth.tar')
-    parser.add_argument('--visor_objs', type=str, default='/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data')
     parser.add_argument('--save_dir', type=str, default='./results/')
+    # parser.add_argument('--image', type=str, default='./kitchen.jpeg')
+    # parser.add_argument('--visor_objs', type=str, default='/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data')
     args = parser.parse_args()
     
 
     main(args)
     print("All done !")
+
+# DISCARDED CODE
+# Getting valid videos + obj data from VISOR
+# epick_100 = glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-100/folder*/*')
+# epick_2018 = glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/DATASETS/EPIC-KITCHENS-2018/frames_rgb_flow/rgb/folder*/*')
+# all_epick = epick_100 + epick_2018
+# valid_videos = []
+# for fp in all_epick:
+#     video = fp[fp.rfind('/')+1:]
+#     if os.path.isdir(os.path.join('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data/', video)):
+#         valid_videos.append(fp)
+# if len(valid_videos) != len(glob.glob('/iris/u/oliviayl/repos/affordance-learning/epic_kitchens/frame_data/P*')):
+#     valid_videos_vidnames = [v[v.rfind('/')+1:] for v in valid_videos]
+#     frame_data_vidnames = [v[v.rfind('/')+1:] for v in frame_data]
+#     print(set(valid_videos_vidnames) - set(frame_data_vidnames))
+# else:
+#     print('all videos accounted for')
+
+# objs = []
+# with open(os.path.join(args.visor_objs, video, 'obj_list.txt'), 'r') as fp:
+#     for line in fp:
+#         line = line[:-1] # remove /n
+#         if line.find('/') == -1:
+#             objs.append(line)
+#         else: 
+#             line_split = line.split('/')
+#             objs.extend(line_split)
